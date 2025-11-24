@@ -1,0 +1,13 @@
+{
+  "name": "wordcloud-js",
+  "version": "0.1.0",
+  "description": "JavaScript port of the Python wordcloud layout algorithm.",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "example": "node examples/generate.js"
+  },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.53"
+  }
+}
