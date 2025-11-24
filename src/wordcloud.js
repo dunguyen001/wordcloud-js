@@ -66,6 +66,7 @@ class WordCloud {
     this.includeNumbers = options.includeNumbers || false;
     this.minWordLength = options.minWordLength || 0;
     this.collocationThreshold = options.collocationThreshold || 30;
+    this.fillGaps = options.fillGaps || false;
     this.fontFamily = options.fontFamily || DEFAULT_FONT_FAMILY;
     this.fontPath = options.fontPath || DEFAULT_FONT_PATH;
     this.stopwords = options.stopwords || loadDefaultStopwords();
@@ -77,7 +78,6 @@ class WordCloud {
   _normalizeMask(mask) {
     if (!mask) return null;
     if (mask.data && mask.width && mask.height) {
-      // ImageData-like input.
       const arr = new Uint8Array(mask.width * mask.height);
       for (let i = 0; i < mask.height; i++) {
         for (let j = 0; j < mask.width; j++) {
@@ -144,32 +144,23 @@ class WordCloud {
     return counts;
   }
 
-  _measure(ctx, word, fontSize, orientation) {
+  _measure(ctx, word, fontSize) {
     ctx.font = `${fontSize}px ${this.fontFamily}`;
-    ctx.textBaseline = "top";
+    ctx.textBaseline = "top"; 
     const metrics = ctx.measureText(word);
 
-    const width = metrics.width;
-    const height =
-      metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+    const buffer = 2; 
 
-    const safePad = 1;
-    const measured = {
-      width: width + safePad,
-      height: height + safePad,
-      // Lưu offset để vẽ cho chính xác tâm
-      offsetY: metrics.actualBoundingBoxAscent,
+    const width = Math.ceil(metrics.width + buffer);
+    const height = Math.ceil(
+      metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent + buffer
+    );
+
+    return {
+      width,
+      height,
+      ascent: metrics.actualBoundingBoxAscent,
     };
-
-    if (orientation === "vertical") {
-      return {
-        width: measured.height,
-        height: measured.width,
-        offsetY: measured.offsetY,
-        isVertical: true,
-      };
-    }
-    return measured;
   }
 
   generateFromFrequencies(frequencies, maxFontSize) {
@@ -182,16 +173,21 @@ class WordCloud {
     freqEntries = freqEntries
       .filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1]);
+
     if (!freqEntries.length) {
       throw new Error("Need at least 1 word to plot");
     }
     freqEntries = freqEntries.slice(0, this.maxWords);
     const maxFrequency = freqEntries[0][1];
+    
+    // Normalize frequencies
     const normalized = freqEntries.map(([w, f]) => [w, f / maxFrequency]);
 
     const mask = this._normalizeMask(this.mask);
     const width = mask ? mask.width : this.width;
     const height = mask ? mask.height : this.height;
+    
+    // Integral Image để tính toán va chạm nhanh (O(1))
     const occupancy = new IntegralOccupancyMap(
       height,
       width,
@@ -201,18 +197,10 @@ class WordCloud {
     const measureCanvas = createCanvas(width, height);
     const measureCtx = measureCanvas.getContext("2d");
 
-    const fontSizes = [];
-    const positions = [];
-    const orientations = [];
-    const colors = [];
-    const boxSizes = [];
-
+    const layoutItems = [];
     const rs = this.relativeScaling;
-    const margin = this.margin;
     let lastFreq = 1;
     let fontSize = maxFontSize || this.maxFontSize || this.height;
-
-    this.words_ = new Map(normalized);
 
     const entries =
       this.repeat && normalized.length < this.maxWords
@@ -221,78 +209,89 @@ class WordCloud {
 
     for (const [word, freq] of entries) {
       if (freq === 0) continue;
+      
       if (rs !== 0) {
         fontSize = Math.round((rs * (freq / lastFreq) + (1 - rs)) * fontSize);
       }
 
-      let orientation =
-        this.random.next() < this.preferHorizontal ? "horizontal" : "vertical";
+      let orientation = null;
+      if (this.random.next() < this.preferHorizontal) {
+        orientation = "horizontal";
+      } else {
+        orientation = "vertical";
+      }
+
       let triedOther = false;
-      let placement = null;
-      let measured = null;
+      let result = null;
+      let box = null;
 
       while (true) {
         if (fontSize < this.minFontSize) break;
-        measured = this._measure(measureCtx, word, fontSize, orientation);
-        const h = Math.ceil(measured.height + margin);
-        const w = Math.ceil(measured.width + margin);
-        placement = occupancy.samplePosition(h, w, this.random);
-        if (placement) break;
+        const measured = this._measure(measureCtx, word, fontSize);
+        
+        let searchW, searchH;
+
+        if (orientation === "horizontal") {
+          searchW = measured.width + this.margin;
+          searchH = measured.height + this.margin;
+        } else {
+          searchW = measured.height + this.margin;
+          searchH = measured.width + this.margin;
+        }
+
+        const pos = occupancy.samplePosition(searchH, searchW, this.random);
+
+        if (pos) {
+          const [y, x] = pos;
+          result = { x, y };
+          box = measured;
+          
+          occupancy.occupyRect(y, x, searchH, searchW);
+          break;
+        }
+
         if (!triedOther && this.preferHorizontal < 1) {
-          orientation =
-            orientation === "horizontal" ? "vertical" : "horizontal";
+          orientation = orientation === "horizontal" ? "vertical" : "horizontal";
           triedOther = true;
         } else {
           fontSize -= this.fontStep;
-          orientation = "horizontal";
+          orientation = null;
+          if (this.preferHorizontal > 0.5) orientation = "horizontal";
+          else orientation = "vertical";
+          
+          triedOther = false; 
         }
       }
 
-      if (!placement || fontSize < this.minFontSize) {
-        break;
+      if (fontSize < this.minFontSize || !result) {
+         continue;
       }
+      const drawX = result.x + Math.floor(this.margin / 2);
+      const drawY = result.y + Math.floor(this.margin / 2);
 
-      const [x, y] = placement;
-      const drawX = x + Math.floor(margin / 2);
-      const drawY = y + Math.floor(margin / 2);
-
-      positions.push({ x: drawX, y: drawY });
-      orientations.push(orientation);
-      fontSizes.push(fontSize);
-      boxSizes.push(measured);
-      colors.push(
-        this.colorFunc(
+      layoutItems.push({
+        word,
+        freq,
+        fontSize,
+        x: drawX,
+        y: drawY,
+        w: box.width,
+        h: box.height,
+        orientation,
+        color: this.colorFunc(
           word,
           fontSize,
           { x: drawX, y: drawY },
           orientation,
           this.random,
-          {
-            fontFamily: this.fontFamily,
-          }
-        )
-      );
+          { fontFamily: this.fontFamily }
+        ),
+      });
 
-      occupancy.occupyRect(
-        x,
-        y,
-        Math.ceil(measured.height + margin),
-        Math.ceil(measured.width + margin)
-      );
       lastFreq = freq;
     }
 
-    this.layout = entries
-      .slice(0, fontSizes.length)
-      .map(([word, freq], idx) => ({
-        word,
-        freq,
-        fontSize: fontSizes[idx],
-        position: positions[idx],
-        orientation: orientations[idx],
-        color: colors[idx],
-        box: boxSizes[idx],
-      }));
+    this.layout = layoutItems;
     this.dimensions = { width, height };
     return this;
   }
@@ -307,12 +306,8 @@ class WordCloud {
       const nextPass = currentList.map(([w, f]) => [w, f * 0.7]);
       padded = padded.concat(nextPass);
       currentList = nextPass;
-
-      // Stop if freq too small
       if (currentList[0][1] < 0.01) break;
     }
-
-    // Sort lại từ lớn đến bé
     return padded.sort((a, b) => b[1] - a[1]).slice(0, this.maxWords);
   }
 
@@ -333,8 +328,11 @@ class WordCloud {
     const height = (this.dimensions?.height || this.height) * this.scale;
     const target = canvas || createCanvas(width, height);
     const ctx = target.getContext("2d");
+    
     ctx.scale(this.scale, this.scale);
+    
     ctx.textBaseline = "top";
+    ctx.textAlign = "left";
 
     if (this.backgroundColor !== null) {
       ctx.fillStyle = this.backgroundColor;
@@ -345,14 +343,15 @@ class WordCloud {
       ctx.save();
       ctx.fillStyle = item.color;
       ctx.font = `${item.fontSize}px ${this.fontFamily}`;
-      if (item.orientation === "vertical") {
-        const h = item.box.height;
-        ctx.translate(item.position.y + h, item.position.x);
+
+      if (item.orientation === "horizontal") {
+        ctx.fillText(item.word, item.x, item.y);
+      } else {
+        ctx.translate(item.x, item.y + item.w);
         ctx.rotate(-Math.PI / 2);
         ctx.fillText(item.word, 0, 0);
-      } else {
-        ctx.fillText(item.word, item.position.y, item.position.x);
       }
+
       ctx.restore();
     }
     return target;

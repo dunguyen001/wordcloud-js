@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { loadImage, createCanvas } = require('@napi-rs/canvas');
-const { WordCloud } = require('../src');
+const { WordCloud } = require('../src/wordcloud');
 
 const sampleText = `Mom brave kind loving best protective patient caring inspiring`;
 
@@ -47,11 +47,12 @@ async function main() {
     randomSeed: 13,
     preferHorizontal: 0.85,
     repeat: true,
-    maxWords: 1000,
+    // maxWords: 1000,
     margin: 2,
+    fillGaps: true,
     // Define your own palette inline; this keeps the package lean.
     colorFunc: (() => {
-      const palette = ['#ffb6c1', '#ff69b4', '#ff1493', '#db7093']; // customize here
+      const palette = ['#b6b7ffff', '#ff69b4', '#ff1493', '#db7093']; // customize here
       return () => palette[Math.floor(Math.random() * palette.length)];
     })(),
     // minFontSize: 4,
