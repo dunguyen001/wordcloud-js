@@ -47,8 +47,13 @@ async function main() {
     randomSeed: 13,
     preferHorizontal: 0.85,
     repeat: true,
-    maxWords: 500,
+    maxWords: 1000,
     margin: 2,
+    // Define your own palette inline; this keeps the package lean.
+    colorFunc: (() => {
+      const palette = ['#ffb6c1', '#ff69b4', '#ff1493', '#db7093']; // customize here
+      return () => palette[Math.floor(Math.random() * palette.length)];
+    })(),
     // minFontSize: 4,
     // maxFontSize: 12,
   });
