@@ -285,11 +285,11 @@ class WordCloud {
         const metrics = ctx.measureText(word);
         const buffer = 2;
         const width = Math.ceil(metrics.width + buffer);
-        const height = Math.ceil((metrics.actualBoundingBoxAscent || 0) + (metrics.actualBoundingBoxDescent || 0) + buffer);
+        const height = Math.ceil((metrics.actualBoundingBoxAscent) + (metrics.actualBoundingBoxDescent) + buffer);
         return {
             width,
             height,
-            ascent: metrics.actualBoundingBoxAscent || 0,
+            ascent: metrics.actualBoundingBoxAscent,
         };
     }
     generateFromFrequencies(frequencies, maxFontSize, bootstrap = false) {

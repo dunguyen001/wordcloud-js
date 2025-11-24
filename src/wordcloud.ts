@@ -429,13 +429,13 @@ export class WordCloud {
 
     const width = Math.ceil(metrics.width + buffer);
     const height = Math.ceil(
-      (metrics.actualBoundingBoxAscent || 0) + (metrics.actualBoundingBoxDescent || 0) + buffer
+      (metrics.actualBoundingBoxAscent) + (metrics.actualBoundingBoxDescent) + buffer
     );
 
     return {
       width,
       height,
-      ascent: metrics.actualBoundingBoxAscent || 0,
+      ascent: metrics.actualBoundingBoxAscent,
     };
   }
 

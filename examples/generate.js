@@ -3,7 +3,7 @@ const path = require('path');
 const { loadImage, createCanvas } = require('@napi-rs/canvas');
 const { WordCloud } = require('..');
 
-const sampleText = `Mom brave kind loving best protective patient caring inspiring`;
+const sampleText = `One Two Three`;
 
 async function createFromMask(filePath, maxDimension = null) {
   const resolved = path.isAbsolute(filePath) ? filePath : path.join(__dirname, filePath);
@@ -47,7 +47,7 @@ async function createFromMask(filePath, maxDimension = null) {
 
 async function main() {
   // Place a `mask.png` next to this script to constrain the cloud shape.
-  const maskPath = path.join(__dirname, 'mask.png');
+  const maskPath = '/Users/apple/Downloads/pngegg.png';
   const hasMask = fs.existsSync(maskPath);
   const previewMask = hasMask ? await createFromMask(maskPath, 512) : null;
   const fullMask = hasMask ? await createFromMask(maskPath, 1024) : null;
@@ -59,7 +59,7 @@ async function main() {
     preferHorizontal: 0.85,
     repeat: true,
     // maxWords: 1000,
-    margin: 2,
+    margin: 4,
     fillGaps: true,
     // Define your own palette inline; this keeps the package lean.
     colorFunc: (() => {
