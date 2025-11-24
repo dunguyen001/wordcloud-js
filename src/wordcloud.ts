@@ -1,19 +1,90 @@
-const fs = require("fs");
-const path = require("path");
-const { createCanvas, GlobalFonts } = require("@napi-rs/canvas");
-// const IntegralOccupancyMap = require("./integralOccupancyMap"); // legacy module; replaced by inline class below
-const { unigramsAndBigrams, processTokens } = require("./tokenization");
-const RNG = require("./random");
+import fs from 'fs';
+import path from 'path';
+import { Canvas, createCanvas, GlobalFonts } from '@napi-rs/canvas';
+import type { SKRSContext2D } from '@napi-rs/canvas';
+import { unigramsAndBigrams, processTokens } from './tokenization';
+import RNG from './random';
 
-const DEFAULT_FONT_PATH = path.join(__dirname, "VNbrique.ttf");
-const DEFAULT_FONT_FAMILY = "VNbrique";
-const DEFAULT_BACKGROUND = "black";
-const STOPWORDS_PATH = path.join(__dirname, "stopwords");
+const DEFAULT_FONT_PATH = path.join(__dirname, 'VNbrique.ttf');
+const DEFAULT_FONT_FAMILY = 'VNbrique';
+const DEFAULT_BACKGROUND = 'black';
+const STOPWORDS_PATH = path.join(__dirname, 'stopwords');
 
-let cachedStopwords = null;
-function loadDefaultStopwords() {
+type MaskBuffer = Uint8Array | Uint8ClampedArray | number[];
+
+interface MaskData {
+  data: MaskBuffer;
+  width: number;
+  height: number;
+}
+
+interface NormalizedMask {
+  data: Uint8Array;
+  width: number;
+  height: number;
+}
+
+export type Orientation = 'horizontal' | 'vertical';
+
+export interface Position {
+  x: number;
+  y: number;
+}
+
+export type ColorFunction = (
+  word: string,
+  fontSize: number,
+  position: Position,
+  orientation: Orientation,
+  random: RNG,
+  meta?: { fontFamily?: string }
+) => string;
+
+export interface LayoutItem {
+  word: string;
+  freq: number;
+  fontSize: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  orientation: Orientation;
+  color: string;
+}
+
+export interface WordCloudOptions {
+  width?: number;
+  height?: number;
+  margin?: number;
+  preferHorizontal?: number;
+  mask?: MaskBuffer | MaskData | null;
+  scale?: number;
+  maxWords?: number;
+  minFontSize?: number;
+  fontStep?: number;
+  randomSeed?: number;
+  backgroundColor?: string | null;
+  maxFontSize?: number | null;
+  regexp?: RegExp | string | null;
+  collocations?: boolean;
+  normalizePlurals?: boolean;
+  repeat?: boolean;
+  relativeScaling?: number;
+  includeNumbers?: boolean;
+  minWordLength?: number;
+  collocationThreshold?: number;
+  fillGaps?: boolean; // kept for API parity
+  fontFamily?: string;
+  fontPath?: string;
+  stopwords?: Iterable<string>;
+  colormap?: string;
+  colorFunc?: ColorFunction | ColormapColorFunc;
+}
+
+let cachedStopwords: Set<string> | null = null;
+function loadDefaultStopwords(): Set<string> {
   if (cachedStopwords) return cachedStopwords;
-  const text = fs.readFileSync(STOPWORDS_PATH, "utf8");
+  const text = fs.readFileSync(STOPWORDS_PATH, 'utf8');
   cachedStopwords = new Set(
     text
       .split(/\r?\n/)
@@ -23,19 +94,30 @@ function loadDefaultStopwords() {
   return cachedStopwords;
 }
 
-function ensureFont(fontPath, family) {
-  if (fontPath && fs.existsSync(fontPath)) {
+function ensureFont(fontPath?: string, family?: string): void {
+  if (!fontPath || !family) return;
+  if (GlobalFonts.has(family)) return;
+  if (fs.existsSync(fontPath)) {
     GlobalFonts.registerFromPath(fontPath, family);
   }
 }
 
-function defaultColorFunc(word, fontSize, position, orientation, random) {
+export function defaultColorFunc(
+  _word: string,
+  _fontSize: number,
+  _position: Position,
+  _orientation: Orientation,
+  random?: RNG
+): string {
   const r = random || new RNG();
   return `hsl(${r.randint(0, 255)}, 80%, 50%)`;
 }
 
 class ColormapColorFunc {
-  constructor(colormap = "viridis") {
+  private name: string;
+  private viridisStops: Array<[number, [number, number, number]]>;
+
+  constructor(colormap: string = 'viridis') {
     this.name = colormap;
     // Key points sampled from matplotlib's viridis (approximate)
     this.viridisStops = [
@@ -51,7 +133,7 @@ class ColormapColorFunc {
     ];
   }
 
-  _interpColor(t) {
+  private interpColor(t: number): string {
     const stops = this.viridisStops;
     let i = 0;
     while (i < stops.length - 1 && t > stops[i + 1][0]) {
@@ -60,34 +142,39 @@ class ColormapColorFunc {
     const [t0, c0] = stops[i];
     const [t1, c1] = stops[Math.min(i + 1, stops.length - 1)];
     const localT = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
-    const lerp = (a, b) => a + (b - a) * localT;
+    const lerp = (a: number, b: number) => a + (b - a) * localT;
     const [r, g, b] = [lerp(c0[0], c1[0]), lerp(c0[1], c1[1]), lerp(c0[2], c1[2])];
     return `rgb(${r.toFixed(0)}, ${g.toFixed(0)}, ${b.toFixed(0)})`;
   }
 
-  call(random) {
+  call(random?: RNG): string {
     const t = (random || new RNG()).next();
-    if (this.name === "hsv") {
+    if (this.name === 'hsv') {
       const hue = Math.floor(t * 255);
       return `hsl(${hue}, 80%, 50%)`;
     }
-    return this._interpColor(t);
+    return this.interpColor(t);
   }
 
-  __call__(word, fontSize, position, orientation, random) {
-    const rng = random || new RNG();
-    const t = rng.next();
-    if (this.name === "hsv") {
-      const hue = Math.floor(t * 255);
-      return `hsl(${hue}, 80%, 50%)`;
-    }
-    return this._interpColor(t);
+  __call__(
+    _word: string,
+    _fontSize: number,
+    _position: Position,
+    _orientation: Orientation,
+    random?: RNG,
+    _meta?: { fontFamily?: string }
+  ): string {
+    return this.call(random);
   }
 }
 
-
 class IntegralOccupancyMap {
-  constructor(height, width, maskData = null) {
+  private height: number;
+  private width: number;
+  private data: Uint8Array;
+  private integral: Uint32Array;
+
+  constructor(height: number, width: number, maskData: Uint8Array | null = null) {
     this.height = height;
     this.width = width;
     const size = width * height;
@@ -98,10 +185,10 @@ class IntegralOccupancyMap {
       }
     }
     this.integral = new Uint32Array(size);
-    this._rebuildIntegral();
+    this.rebuildIntegral();
   }
 
-  _rebuildIntegral() {
+  private rebuildIntegral(): void {
     const { width, height, data, integral } = this;
     for (let y = 0; y < height; y++) {
       let rowSum = 0;
@@ -114,7 +201,7 @@ class IntegralOccupancyMap {
     }
   }
 
-  samplePosition(sizeX, sizeY, rng) {
+  samplePosition(sizeX: number, sizeY: number, rng: RNG): [number, number] | null {
     const { width, height, integral } = this;
     if (sizeX > height || sizeY > width) return null;
     let hits = 0;
@@ -149,27 +236,66 @@ class IntegralOccupancyMap {
     return null;
   }
 
-  occupyPixels(y, x, imageData, bmpW, bmpH) {
+  occupyPixels(y: number, x: number, imageData: Uint8ClampedArray, bmpW: number, bmpH: number): void {
     const { width, height, data } = this;
-    const bytes = imageData; // Uint8ClampedArray bitmap from the temp canvas
     for (let py = 0; py < bmpH; py++) {
       const gy = y + py;
       if (gy < 0 || gy >= height) continue;
       for (let px = 0; px < bmpW; px++) {
         const gx = x + px;
         if (gx < 0 || gx >= width) continue;
-        const alpha = bytes[(py * bmpW + px) * 4 + 3];
+        const alpha = imageData[(py * bmpW + px) * 4 + 3];
         if (alpha > 0) {
           data[gy * width + gx] = 255;
         }
       }
     }
-    this._rebuildIntegral();
+    this.rebuildIntegral();
   }
 }
 
-class WordCloud {
-  constructor(options = {}) {
+function isMaskData(mask: unknown): mask is MaskData {
+  return (
+    typeof mask === 'object' &&
+    mask !== null &&
+    'data' in (mask as MaskData) &&
+    'width' in (mask as MaskData) &&
+    'height' in (mask as MaskData)
+  );
+}
+
+export class WordCloud {
+  width: number;
+  height: number;
+  margin: number;
+  preferHorizontal: number;
+  mask: MaskBuffer | MaskData | null;
+  scale: number;
+  maxWords: number;
+  minFontSize: number;
+  fontStep: number;
+  random: RNG;
+  backgroundColor: string | null;
+  maxFontSize: number | null | undefined;
+  regexp: RegExp | null;
+  collocations: boolean;
+  normalizePlurals: boolean;
+  repeat: boolean;
+  relativeScaling: number;
+  includeNumbers: boolean;
+  minWordLength: number;
+  collocationThreshold: number;
+  fillGaps: boolean;
+  fontFamily: string;
+  fontPath: string;
+  stopwords: Iterable<string>;
+  colormap: string;
+  colorFunc: ColorFunction;
+  words?: Map<string, number>;
+  layout?: LayoutItem[];
+  dimensions?: { width: number; height: number };
+
+  constructor(options: WordCloudOptions = {}) {
     this.width = options.width || 400;
     this.height = options.height || 200;
     this.margin = options.margin || 2;
@@ -185,8 +311,8 @@ class WordCloud {
         : new RNG();
     this.backgroundColor =
       options.backgroundColor === undefined ? DEFAULT_BACKGROUND : options.backgroundColor;
-    this.maxFontSize = options.maxFontSize || null;
-    this.regexp = options.regexp || null;
+    this.maxFontSize = options.maxFontSize ?? null;
+    this.regexp = options.regexp ? (options.regexp instanceof RegExp ? options.regexp : new RegExp(options.regexp)) : null;
     this.collocations =
       options.collocations !== undefined ? options.collocations : true;
     this.normalizePlurals =
@@ -201,67 +327,69 @@ class WordCloud {
     this.includeNumbers = options.includeNumbers || false;
     this.minWordLength = options.minWordLength || 0;
     this.collocationThreshold = options.collocationThreshold || 30;
-    this.fillGaps = options.fillGaps || false; // placeholder to keep parity with Python options; unused here
+    this.fillGaps = options.fillGaps || false;
     this.fontFamily = options.fontFamily || DEFAULT_FONT_FAMILY;
     this.fontPath = options.fontPath || DEFAULT_FONT_PATH;
     this.stopwords = options.stopwords || loadDefaultStopwords();
-    this.colormap = options.colormap || "viridis";
+    this.colormap = options.colormap || 'viridis';
+
     if (this.relativeScaling < 0 || this.relativeScaling > 1) {
       throw new Error(`relativeScaling must be between 0 and 1, got ${this.relativeScaling}`);
     }
+
     const chosenColorFunc =
       options.colorFunc ||
-      new ColormapColorFunc(this.colormap || (options.colorFunc ? null : "viridis"));
+      new ColormapColorFunc(this.colormap || (options.colorFunc ? 'viridis' : 'viridis'));
     this.colorFunc =
-      typeof chosenColorFunc === "function"
+      typeof chosenColorFunc === 'function'
         ? chosenColorFunc
         : (...args) => chosenColorFunc.__call__(...args);
 
     ensureFont(this.fontPath, this.fontFamily);
   }
 
-  _normalizeMask(mask) {
+  private normalizeMask(mask: MaskBuffer | MaskData | null): NormalizedMask | null {
     if (!mask) return null;
-    if (mask.data && mask.width && mask.height) {
+    if (isMaskData(mask)) {
       const arr = new Uint8Array(mask.width * mask.height);
       for (let i = 0; i < mask.height; i++) {
         for (let j = 0; j < mask.width; j++) {
           const idx = (i * mask.width + j) * 4;
-          const r = mask.data[idx];
-          const g = mask.data[idx + 1];
-          const b = mask.data[idx + 2];
-          // white pixels (255,255,255) in the mask are treated as blocked
+          const r = (mask.data as Uint8Array | Uint8ClampedArray)[idx];
+          const g = (mask.data as Uint8Array | Uint8ClampedArray)[idx + 1];
+          const b = (mask.data as Uint8Array | Uint8ClampedArray)[idx + 2];
           arr[i * mask.width + j] = r === 255 && g === 255 && b === 255 ? 255 : 0;
         }
       }
       return { data: arr, width: mask.width, height: mask.height };
     }
-    if (mask.length) {
-      if (mask.length !== this.width * this.height) {
+    if (Array.isArray(mask) || mask instanceof Uint8Array || mask instanceof Uint8ClampedArray) {
+      const length = (mask as MaskBuffer).length;
+      if (length !== this.width * this.height) {
         throw new Error(
-          `Mask length ${mask.length} does not match expected ${this.width * this.height}`
+          `Mask length ${length} does not match expected ${this.width * this.height}`
         );
       }
-      const arr = new Uint8Array(mask.length);
-      for (let i = 0; i < mask.length; i++) {
-        arr[i] = mask[i] ? 255 : 0;
+      const arr = new Uint8Array(length);
+      for (let i = 0; i < length; i++) {
+        arr[i] = (mask as MaskBuffer)[i] ? 255 : 0;
       }
       return { data: arr, width: this.width, height: this.height };
     }
-    throw new Error("Unsupported mask format");
+    throw new Error('Unsupported mask format');
   }
 
-  processText(text) {
+  processText(text: string): Map<string, number> {
     const basePattern = this.minWordLength <= 1 ? /\w[\w']*/g : /\w[\w']+/g;
-    let regex = basePattern;
+    let regex: RegExp = basePattern;
     if (this.regexp) {
       if (this.regexp instanceof RegExp) {
-        const flags = this.regexp.flags.includes("g")
+        const flags = this.regexp.flags.includes('g')
           ? this.regexp.flags
           : `${this.regexp.flags}g`;
         regex = new RegExp(this.regexp.source, flags);
       } else {
-        regex = new RegExp(this.regexp, "g");
+        regex = new RegExp(this.regexp, 'g');
       }
     }
     const matches = text.match(regex) || [];
@@ -277,7 +405,7 @@ class WordCloud {
     const stopwords = new Set(
       Array.from(this.stopwords || []).map((w) => w.toLowerCase())
     );
-    let counts;
+    let counts: Map<string, number>;
     if (this.collocations) {
       counts = unigramsAndBigrams(
         words,
@@ -292,27 +420,31 @@ class WordCloud {
     return counts;
   }
 
-  _measure(ctx, word, fontSize) {
+  private measure(ctx: SKRSContext2D, word: string, fontSize: number): { width: number; height: number; ascent: number } {
     ctx.font = `${fontSize}px ${this.fontFamily}`;
-    ctx.textBaseline = "top";
+    ctx.textBaseline = 'top';
     const metrics = ctx.measureText(word);
 
     const buffer = 2;
 
     const width = Math.ceil(metrics.width + buffer);
     const height = Math.ceil(
-      metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent + buffer
+      (metrics.actualBoundingBoxAscent || 0) + (metrics.actualBoundingBoxDescent || 0) + buffer
     );
 
     return {
       width,
       height,
-      ascent: metrics.actualBoundingBoxAscent,
+      ascent: metrics.actualBoundingBoxAscent || 0,
     };
   }
 
-  generateFromFrequencies(frequencies, maxFontSize) {
-    let freqEntries;
+  generateFromFrequencies(
+    frequencies: ReadonlyMap<string, number> | Record<string, number>,
+    maxFontSize?: number | null,
+    bootstrap = false
+  ): this {
+    let freqEntries: Array<[string, number]>;
     if (frequencies instanceof Map) {
       freqEntries = Array.from(frequencies.entries());
     } else {
@@ -323,15 +455,15 @@ class WordCloud {
       .sort((a, b) => b[1] - a[1]);
 
     if (!freqEntries.length) {
-      throw new Error("Need at least 1 word to plot");
+      throw new Error('Need at least 1 word to plot');
     }
     freqEntries = freqEntries.slice(0, this.maxWords);
     const maxFrequency = freqEntries[0][1];
 
     // Normalize frequencies
-    const normalized = freqEntries.map(([w, f]) => [w, f / maxFrequency]);
+    const normalized = freqEntries.map(([w, f]) => [w, f / maxFrequency] as [string, number]);
 
-    const mask = this._normalizeMask(this.mask);
+    const mask = this.normalizeMask(this.mask || null);
     const width = mask ? mask.width : this.width;
     const height = mask ? mask.height : this.height;
 
@@ -343,16 +475,16 @@ class WordCloud {
     );
 
     const measureCanvas = createCanvas(width, height);
-    const measureCtx = measureCanvas.getContext("2d");
+    const measureCtx = measureCanvas.getContext('2d');
 
-    const layoutItems = [];
+    const layoutItems: LayoutItem[] = [];
     const rs = this.relativeScaling;
     let lastFreq = 1;
-    let fontSize;
+    let fontSize: number;
 
     const entries =
       this.repeat && normalized.length < this.maxWords
-        ? this._padFrequencies(normalized)
+        ? this.padFrequencies(normalized)
         : normalized;
 
     if (maxFontSize !== undefined && maxFontSize !== null) {
@@ -363,14 +495,18 @@ class WordCloud {
       fontSize = height;
     } else if (entries.length > 1) {
       // Mirror Python heuristic: run a bootstrap on the first two words.
-      this.generateFromFrequencies(new Map(entries.slice(0, 2)), height, true);
-      const sizes = (this.layout || []).map((item) => item.fontSize);
-      if (sizes.length >= 2) {
-        fontSize = Math.floor((2 * sizes[0] * sizes[1]) / (sizes[0] + sizes[1]));
-      } else if (sizes.length === 1) {
-        fontSize = sizes[0];
+      if (!bootstrap) {
+        this.generateFromFrequencies(new Map(entries.slice(0, 2)), height, true);
+        const sizes = (this.layout || []).map((item) => item.fontSize);
+        if (sizes.length >= 2) {
+          fontSize = Math.floor((2 * sizes[0] * sizes[1]) / (sizes[0] + sizes[1]));
+        } else if (sizes.length === 1) {
+          fontSize = sizes[0];
+        } else {
+          throw new Error("Couldn't find space to draw. Canvas too small or masked out.");
+        }
       } else {
-        throw new Error("Couldn't find space to draw. Canvas too small or masked out.");
+        fontSize = height;
       }
     } else {
       fontSize = height;
@@ -384,23 +520,24 @@ class WordCloud {
         fontSize = Math.round((rs * (freq / lastFreq) + (1 - rs)) * fontSize);
       }
 
-      let orientation = null;
+      let orientation: Orientation = 'horizontal';
       if (this.random.next() < this.preferHorizontal) {
-        orientation = "horizontal";
+        orientation = 'horizontal';
       } else {
-        orientation = "vertical";
+        orientation = 'vertical';
       }
 
       let triedOther = false;
-      let result = null;
-      let box = null;
-      let searchW, searchH;
+      let result: { x: number; y: number } | null = null;
+      let box: { width: number; height: number; ascent: number } | null = null;
+      let searchW: number;
+      let searchH: number;
 
       while (true) {
         if (fontSize < this.minFontSize) break;
-        const measured = this._measure(measureCtx, word, fontSize);
+        const measured = this.measure(measureCtx, word, fontSize);
 
-        if (orientation === "horizontal") {
+        if (orientation === 'horizontal') {
           searchW = measured.width + this.margin;
           searchH = measured.height + this.margin;
         } else {
@@ -420,24 +557,25 @@ class WordCloud {
 
         if (!triedOther && this.preferHorizontal < 1) {
           orientation =
-            orientation === "horizontal" ? "vertical" : "horizontal";
+            orientation === 'horizontal' ? 'vertical' : 'horizontal';
           triedOther = true;
         } else {
           fontSize -= this.fontStep;
-          orientation = "horizontal";
+          orientation = 'horizontal';
           triedOther = false;
         }
       }
 
-      if (fontSize < this.minFontSize || !result) {
+      if (fontSize < this.minFontSize || !result || !box) {
         break;
       }
 
       const drawX = result.x + Math.floor(this.margin / 2);
       const drawY = result.y + Math.floor(this.margin / 2);
 
-      let tmpW, tmpH;
-      if (orientation === "horizontal") {
+      let tmpW: number;
+      let tmpH: number;
+      if (orientation === 'horizontal') {
         tmpW = box.width;
         tmpH = box.height;
       } else {
@@ -446,12 +584,12 @@ class WordCloud {
       }
 
       const tmpCanvas = createCanvas(tmpW, tmpH);
-      const tmpCtx = tmpCanvas.getContext("2d");
+      const tmpCtx = tmpCanvas.getContext('2d');
       tmpCtx.font = `${fontSize}px ${this.fontFamily}`;
-      tmpCtx.textBaseline = "top";
-      tmpCtx.fillStyle = "#000";
+      tmpCtx.textBaseline = 'top';
+      tmpCtx.fillStyle = '#000';
 
-      if (orientation === "horizontal") {
+      if (orientation === 'horizontal') {
         tmpCtx.fillText(word, 0, 0);
       } else {
         // rotate -90° and translate so the word stays inside the temp canvas
@@ -499,7 +637,7 @@ class WordCloud {
     return this;
   }
 
-  _padFrequencies(frequencies) {
+  private padFrequencies(frequencies: Array<[string, number]>): Array<[string, number]> {
     if (!this.repeat || frequencies.length === 0) return frequencies;
 
     let padded = [...frequencies];
@@ -507,33 +645,33 @@ class WordCloud {
     const downweight = frequencies[frequencies.length - 1][1];
     const original = [...frequencies];
     for (let i = 0; i < timesExtend; i++) {
-      padded = padded.concat(original.map(([w, f]) => [w, f * downweight ** (i + 1)]));
+      padded = padded.concat(original.map(([w, f]) => [w, f * downweight ** (i + 1)] as [string, number]));
     }
     return padded.slice(0, this.maxWords);
   }
 
-  generateFromText(text) {
+  generateFromText(text: string): this {
     const counts = this.processText(text);
     return this.generateFromFrequencies(counts);
   }
 
-  generate(text) {
+  generate(text: string): this {
     return this.generateFromText(text);
   }
 
-  toCanvas(canvas) {
+  toCanvas(canvas?: Canvas): Canvas {
     if (!this.layout) {
-      throw new Error("Call generate() first");
+      throw new Error('Call generate() first');
     }
     const width = (this.dimensions?.width || this.width) * this.scale;
     const height = (this.dimensions?.height || this.height) * this.scale;
     const target = canvas || createCanvas(width, height);
-    const ctx = target.getContext("2d");
+    const ctx = target.getContext('2d');
 
     ctx.scale(this.scale, this.scale);
 
-    ctx.textBaseline = "top";
-    ctx.textAlign = "left";
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
 
     if (this.backgroundColor !== null) {
       ctx.fillStyle = this.backgroundColor;
@@ -545,7 +683,7 @@ class WordCloud {
       ctx.fillStyle = item.color;
       ctx.font = `${item.fontSize}px ${this.fontFamily}`;
 
-      if (item.orientation === "horizontal") {
+      if (item.orientation === 'horizontal') {
         ctx.fillText(item.word, item.x, item.y);
       } else {
         ctx.translate(item.x, item.y + item.w);
@@ -558,10 +696,11 @@ class WordCloud {
     return target;
   }
 
-  toBuffer(format = "image/png") {
+  toBuffer(format: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/avif' = 'image/png'): Buffer {
     const canvas = this.toCanvas();
-    return canvas.toBuffer(format);
+    // Canvas typings are overloaded; cast keeps the API surface aligned with @napi-rs/canvas.
+    return canvas.toBuffer(format as any);
   }
 }
 
-module.exports = { WordCloud, defaultColorFunc };
+export { ColormapColorFunc };

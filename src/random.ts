@@ -1,10 +1,12 @@
 // Simple deterministic RNG so the layout can be reproduced with a seed.
-class RNG {
-  constructor(seed = Date.now()) {
+export default class RNG {
+  private state: number;
+
+  constructor(seed: number = Date.now()) {
     this.state = seed >>> 0;
   }
 
-  next() {
+  next(): number {
     // Mulberry32 PRNG
     this.state |= 0;
     this.state = (this.state + 0x6d2b79f5) | 0;
@@ -13,9 +15,7 @@ class RNG {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
-  randint(min, max) {
+  randint(min: number, max: number): number {
     return Math.floor(this.next() * (max - min + 1)) + min;
   }
 }
-
-module.exports = RNG;

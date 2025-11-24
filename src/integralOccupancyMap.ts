@@ -1,5 +1,10 @@
 class IntegralOccupancyMap {
-  constructor(height, width, mask) {
+  private height: number;
+  private width: number;
+  private grid: Uint8Array;
+  private integral: Uint32Array;
+
+  constructor(height: number, width: number, mask?: Uint8Array | number[]) {
     this.height = height;
     this.width = width;
     this.grid = new Uint8Array(height * width);
@@ -10,7 +15,7 @@ class IntegralOccupancyMap {
     this.recomputeIntegral();
   }
 
-  _ingestMask(mask) {
+  private _ingestMask(mask: Uint8Array | number[]): void {
     // mask is expected to be a flat array of length height * width.
     if (mask.length !== this.grid.length) {
       throw new Error(`Mask size mismatch. Expected ${this.grid.length}, got ${mask.length}`);
@@ -21,7 +26,7 @@ class IntegralOccupancyMap {
     }
   }
 
-  recomputeIntegral() {
+  recomputeIntegral(): void {
     const w1 = this.width + 1;
     const integral = this.integral;
     // reset first row
@@ -36,7 +41,7 @@ class IntegralOccupancyMap {
     }
   }
 
-  area(x1, y1, x2, y2) {
+  private area(x1: number, y1: number, x2: number, y2: number): number {
     // compute integral over [x1, x2) x [y1, y2)
     const w1 = this.width + 1;
     const a = this.integral[x1 * w1 + y1];
@@ -46,7 +51,7 @@ class IntegralOccupancyMap {
     return a + b - c - d;
   }
 
-  samplePosition(sizeX, sizeY, random) {
+  samplePosition(sizeX: number, sizeY: number, random: { randint(min: number, max: number): number }): [number, number] | null {
     const maxX = this.height - sizeX;
     const maxY = this.width - sizeY;
     if (maxX < 0 || maxY < 0) return null;
@@ -74,7 +79,7 @@ class IntegralOccupancyMap {
     return null;
   }
 
-  occupyRect(x, y, sizeX, sizeY) {
+  occupyRect(x: number, y: number, sizeX: number, sizeY: number): void {
     for (let i = 0; i < sizeX; i++) {
       const row = x + i;
       for (let j = 0; j < sizeY; j++) {
@@ -86,4 +91,4 @@ class IntegralOccupancyMap {
   }
 }
 
-module.exports = IntegralOccupancyMap;
+export default IntegralOccupancyMap;

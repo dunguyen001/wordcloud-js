@@ -2,12 +2,12 @@ const { log } = Math;
 
 const tiny = 1e-10;
 
-function l(k, n, x) {
+function l(k: number, n: number, x: number): number {
   // Dunning's likelihood ratio
   return log(Math.max(x, tiny)) * k + log(Math.max(1 - x, tiny)) * (n - k);
 }
 
-function score(countBigram, count1, count2, nWords) {
+function score(countBigram: number, count1: number, count2: number, nWords: number): number {
   if (nWords <= count1 || nWords <= count2) return 0;
   const N = nWords;
   const c12 = countBigram;
@@ -19,32 +19,37 @@ function score(countBigram, count1, count2, nWords) {
   return -2 * (l(c12, c1, p) + l(c2 - c12, N - c1, p) - l(c12, c1, p1) - l(c2 - c12, N - c1, p2));
 }
 
-function pairwise(iterable) {
-  const pairs = [];
+function pairwise<T>(iterable: T[]): Array<[T, T]> {
+  const pairs: Array<[T, T]> = [];
   for (let i = 0; i < iterable.length - 1; i++) {
     pairs.push([iterable[i], iterable[i + 1]]);
   }
   return pairs;
 }
 
-function processTokens(words, normalizePlurals = true) {
+export interface ProcessedTokens {
+  counts: Map<string, number>;
+  standardForms: Map<string, string>;
+}
+
+export function processTokens(words: string[], normalizePlurals = true): ProcessedTokens {
   // Track capitalization counts for each lowercase token.
-  const caseCounts = new Map();
+  const caseCounts = new Map<string, Map<string, number>>();
   for (const word of words) {
     const lower = word.toLowerCase();
-    const perCase = caseCounts.get(lower) || new Map();
+    const perCase = caseCounts.get(lower) || new Map<string, number>();
     perCase.set(word, (perCase.get(word) || 0) + 1);
     caseCounts.set(lower, perCase);
   }
 
-  const mergedPlurals = new Map();
+  const mergedPlurals = new Map<string, string>();
   if (normalizePlurals) {
     for (const key of Array.from(caseCounts.keys())) {
       if (key.endsWith('s') && !key.endsWith('ss')) {
         const singular = key.slice(0, -1);
         if (caseCounts.has(singular)) {
-          const pluralDict = caseCounts.get(key);
-          const singularDict = caseCounts.get(singular);
+          const pluralDict = caseCounts.get(key)!;
+          const singularDict = caseCounts.get(singular)!;
           for (const [word, count] of pluralDict.entries()) {
             const singularCase = word.slice(0, -1);
             singularDict.set(singularCase, (singularDict.get(singularCase) || 0) + count);
@@ -56,11 +61,11 @@ function processTokens(words, normalizePlurals = true) {
     }
   }
 
-  const fusedCases = new Map();
-  const standardForms = new Map();
+  const fusedCases = new Map<string, number>();
+  const standardForms = new Map<string, string>();
 
   for (const [lower, perCase] of caseCounts.entries()) {
-    let mostCommon = null;
+    let mostCommon: string | null = null;
     let highest = -1;
     for (const [form, count] of perCase.entries()) {
       if (count > highest) {
@@ -68,27 +73,37 @@ function processTokens(words, normalizePlurals = true) {
         highest = count;
       }
     }
-    fusedCases.set(mostCommon, Array.from(perCase.values()).reduce((a, b) => a + b, 0));
-    standardForms.set(lower, mostCommon);
+    const representative = mostCommon ?? Array.from(perCase.keys())[0];
+    const total = Array.from(perCase.values()).reduce((a, b) => a + b, 0);
+    fusedCases.set(representative, total);
+    standardForms.set(lower, representative);
   }
 
   if (normalizePlurals) {
     for (const [plural, singular] of mergedPlurals.entries()) {
-      standardForms.set(plural, standardForms.get(singular.toLowerCase()));
+      const canonical = standardForms.get(singular.toLowerCase());
+      if (canonical) {
+        standardForms.set(plural, canonical);
+      }
     }
   }
 
   return { counts: fusedCases, standardForms };
 }
 
-function unigramsAndBigrams(words, stopwords, normalizePlurals = true, collocationThreshold = 30) {
+export function unigramsAndBigrams(
+  words: string[],
+  stopwords: Iterable<string>,
+  normalizePlurals = true,
+  collocationThreshold = 30
+): Map<string, number> {
   const stop = new Set(Array.from(stopwords || []).map((w) => w.toLowerCase()));
   const bigrams = pairwise(words).filter((pair) => !pair.some((w) => stop.has(w.toLowerCase())));
   const unigrams = words.filter((w) => !stop.has(w.toLowerCase()));
   const nWords = unigrams.length;
 
   const { counts: countsUnigrams, standardForms } = processTokens(unigrams, normalizePlurals);
-  const { counts: countsBigrams, standardForms: standardFormsBigrams } = processTokens(
+  const { counts: countsBigrams } = processTokens(
     bigrams.map((b) => b.join(' ')),
     normalizePlurals
   );
@@ -115,8 +130,3 @@ function unigramsAndBigrams(words, stopwords, normalizePlurals = true, collocati
 
   return countsUnigrams;
 }
-
-module.exports = {
-  processTokens,
-  unigramsAndBigrams,
-};

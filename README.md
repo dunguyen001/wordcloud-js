@@ -13,7 +13,7 @@ The project depends on `@napi-rs/canvas`, which bundles native binaries. No extr
 ## Basic usage
 
 ```js
-const { WordCloud } = require("./src/wordcloud");
+const { WordCloud } = require("wordcloud-js");
 const fs = require("fs");
 
 const wc = new WordCloud({
@@ -27,7 +27,16 @@ const buffer = wc.toBuffer("image/png");
 fs.writeFileSync("cloud.png", buffer);
 ```
 
-See `examples/generate.js` for a runnable example that writes `examples/output.png`.
+TypeScript is supported out of the box:
+
+```ts
+import { WordCloud, WordCloudOptions } from "wordcloud-js";
+
+const wc = new WordCloud({ width: 300, height: 150 } satisfies WordCloudOptions);
+wc.generate("typed usage is now first-class");
+```
+
+See `examples/generate.js` for a runnable example that writes `examples/example.preview.png`.
 
 ## Options (parity with Python)
 
@@ -50,5 +59,5 @@ See `examples/generate.js` for a runnable example that writes `examples/output.p
 
 ## Development
 
-- `npm run example` – generate `examples/output.png` with the sample text.
-
+- `npm run build` – compile TypeScript to `dist/` and copy bundled assets (fonts + stopwords).
+- `npm run example` – build then generate `examples/output.png` with the sample text.
