@@ -1,6 +1,6 @@
 {
   "name": "easy-wordcloud-js",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "JavaScript port of the Python wordcloud layout algorithm.",
   "type": "commonjs",
   "main": "dist/index.js",
