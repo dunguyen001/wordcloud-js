@@ -5,10 +5,9 @@ const IntegralOccupancyMap = require("./integralOccupancyMap");
 const { unigramsAndBigrams, processTokens } = require("./tokenization");
 const RNG = require("./random");
 
-const FILE_DIR = path.join(__dirname, "..", "wordcloud");
-const DEFAULT_FONT_PATH = path.join(FILE_DIR, "DroidSansMono.ttf");
+const DEFAULT_FONT_PATH = path.join(__dirname, "DroidSansMono.ttf");
 const DEFAULT_FONT_FAMILY = "DroidSansMono";
-const STOPWORDS_PATH = path.join(FILE_DIR, "stopwords");
+const STOPWORDS_PATH = path.join(__dirname, "stopwords");
 
 let cachedStopwords = null;
 function loadDefaultStopwords() {
@@ -49,7 +48,7 @@ class WordCloud {
       options.randomSeed !== undefined
         ? new RNG(options.randomSeed)
         : new RNG();
-    this.backgroundColor = options.backgroundColor ?? "black";
+    this.backgroundColor = options.backgroundColor;
     this.maxFontSize = options.maxFontSize || null;
     this.regexp = options.regexp || null;
     this.collocations =

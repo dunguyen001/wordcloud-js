@@ -47,7 +47,7 @@ async function main() {
     randomSeed: 13,
     preferHorizontal: 0.85,
     repeat: true,
-    // maxWords: 1000,
+    maxWords: 1000,
     margin: 2,
     fillGaps: true,
     // Define your own palette inline; this keeps the package lean.
