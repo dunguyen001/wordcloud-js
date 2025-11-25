@@ -532,5 +532,10 @@ class WordCloud {
         }
         return target;
     }
+    toBuffer(format = 'image/png') {
+        const canvas = this.toCanvas();
+        // Canvas typings are overloaded; cast keeps the API surface aligned with @napi-rs/canvas.
+        return canvas.toBuffer(format);
+    }
 }
 exports.WordCloud = WordCloud;

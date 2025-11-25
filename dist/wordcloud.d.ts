@@ -107,5 +107,6 @@ export declare class WordCloud {
     generateFromText(text: string): this;
     generate(text: string): this;
     toCanvas(canvas?: Canvas): Canvas;
+    toBuffer(format?: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/avif'): Buffer;
 }
 export { ColormapColorFunc };

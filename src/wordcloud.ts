@@ -766,6 +766,12 @@ export class WordCloud {
     }
     return target;
   }
+
+  toBuffer(format: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/avif' = 'image/png'): Buffer {
+    const canvas = this.toCanvas();
+    // Canvas typings are overloaded; cast keeps the API surface aligned with @napi-rs/canvas.
+    return canvas.toBuffer(format as any);
+  }
 }
 
 export { ColormapColorFunc };
