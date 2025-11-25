@@ -1,12 +1,12 @@
-import { Canvas } from '@napi-rs/canvas';
-import RNG from './random';
+import { Canvas } from "@napi-rs/canvas";
+import RNG from "./random";
 type MaskBuffer = Uint8Array | Uint8ClampedArray | number[];
 interface MaskData {
     data: MaskBuffer;
     width: number;
     height: number;
 }
-export type Orientation = 'horizontal' | 'vertical';
+export type Orientation = "horizontal" | "vertical";
 export interface Position {
     x: number;
     y: number;
@@ -22,6 +22,7 @@ export interface LayoutItem {
     y: number;
     w: number;
     h: number;
+    ascent: number;
     orientation: Orientation;
     color: string;
 }
@@ -106,6 +107,5 @@ export declare class WordCloud {
     generateFromText(text: string): this;
     generate(text: string): this;
     toCanvas(canvas?: Canvas): Canvas;
-    toBuffer(format?: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/avif'): Buffer;
 }
 export { ColormapColorFunc };

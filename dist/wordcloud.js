@@ -10,15 +10,15 @@ const path_1 = __importDefault(require("path"));
 const canvas_1 = require("@napi-rs/canvas");
 const tokenization_1 = require("./tokenization");
 const random_1 = __importDefault(require("./random"));
-const DEFAULT_FONT_PATH = path_1.default.join(__dirname, 'VNbrique.ttf');
-const DEFAULT_FONT_FAMILY = 'VNbrique';
-const DEFAULT_BACKGROUND = 'black';
-const STOPWORDS_PATH = path_1.default.join(__dirname, 'stopwords');
+const DEFAULT_FONT_PATH = path_1.default.join(__dirname, "VNbrique.ttf");
+const DEFAULT_FONT_FAMILY = "VNbrique";
+const DEFAULT_BACKGROUND = "black";
+const STOPWORDS_PATH = path_1.default.join(__dirname, "stopwords");
 let cachedStopwords = null;
 function loadDefaultStopwords() {
     if (cachedStopwords)
         return cachedStopwords;
-    const text = fs_1.default.readFileSync(STOPWORDS_PATH, 'utf8');
+    const text = fs_1.default.readFileSync(STOPWORDS_PATH, "utf8");
     cachedStopwords = new Set(text
         .split(/\r?\n/)
         .map((w) => w.trim())
@@ -39,7 +39,7 @@ function defaultColorFunc(_word, _fontSize, _position, _orientation, random) {
     return `hsl(${r.randint(0, 255)}, 80%, 50%)`;
 }
 class ColormapColorFunc {
-    constructor(colormap = 'viridis') {
+    constructor(colormap = "viridis") {
         this.name = colormap;
         // Key points sampled from matplotlib's viridis (approximate)
         this.viridisStops = [
@@ -64,12 +64,16 @@ class ColormapColorFunc {
         const [t1, c1] = stops[Math.min(i + 1, stops.length - 1)];
         const localT = t1 === t0 ? 0 : (t - t0) / (t1 - t0);
         const lerp = (a, b) => a + (b - a) * localT;
-        const [r, g, b] = [lerp(c0[0], c1[0]), lerp(c0[1], c1[1]), lerp(c0[2], c1[2])];
+        const [r, g, b] = [
+            lerp(c0[0], c1[0]),
+            lerp(c0[1], c1[1]),
+            lerp(c0[2], c1[2]),
+        ];
         return `rgb(${r.toFixed(0)}, ${g.toFixed(0)}, ${b.toFixed(0)})`;
     }
     call(random) {
         const t = (random || new random_1.default()).next();
-        if (this.name === 'hsv') {
+        if (this.name === "hsv") {
             const hue = Math.floor(t * 255);
             return `hsl(${hue}, 80%, 50%)`;
         }
@@ -161,11 +165,11 @@ class IntegralOccupancyMap {
     }
 }
 function isMaskData(mask) {
-    return (typeof mask === 'object' &&
+    return (typeof mask === "object" &&
         mask !== null &&
-        'data' in mask &&
-        'width' in mask &&
-        'height' in mask);
+        "data" in mask &&
+        "width" in mask &&
+        "height" in mask);
 }
 class WordCloud {
     constructor(options = {}) {
@@ -184,9 +188,15 @@ class WordCloud {
                 ? new random_1.default(options.randomSeed)
                 : new random_1.default();
         this.backgroundColor =
-            options.backgroundColor === undefined ? DEFAULT_BACKGROUND : options.backgroundColor;
+            options.backgroundColor === undefined
+                ? DEFAULT_BACKGROUND
+                : options.backgroundColor;
         this.maxFontSize = (_b = options.maxFontSize) !== null && _b !== void 0 ? _b : null;
-        this.regexp = options.regexp ? (options.regexp instanceof RegExp ? options.regexp : new RegExp(options.regexp)) : null;
+        this.regexp = options.regexp
+            ? options.regexp instanceof RegExp
+                ? options.regexp
+                : new RegExp(options.regexp)
+            : null;
         this.collocations =
             options.collocations !== undefined ? options.collocations : true;
         this.normalizePlurals =
@@ -205,14 +215,14 @@ class WordCloud {
         this.fontFamily = options.fontFamily || DEFAULT_FONT_FAMILY;
         this.fontPath = options.fontPath || DEFAULT_FONT_PATH;
         this.stopwords = options.stopwords || loadDefaultStopwords();
-        this.colormap = options.colormap || 'viridis';
+        this.colormap = options.colormap || "viridis";
         if (this.relativeScaling < 0 || this.relativeScaling > 1) {
             throw new Error(`relativeScaling must be between 0 and 1, got ${this.relativeScaling}`);
         }
         const chosenColorFunc = options.colorFunc ||
-            new ColormapColorFunc(this.colormap || (options.colorFunc ? 'viridis' : 'viridis'));
+            new ColormapColorFunc(this.colormap || (options.colorFunc ? "viridis" : "viridis"));
         this.colorFunc =
-            typeof chosenColorFunc === 'function'
+            typeof chosenColorFunc === "function"
                 ? chosenColorFunc
                 : (...args) => chosenColorFunc.__call__(...args);
         ensureFont(this.fontPath, this.fontFamily);
@@ -228,12 +238,15 @@ class WordCloud {
                     const r = mask.data[idx];
                     const g = mask.data[idx + 1];
                     const b = mask.data[idx + 2];
-                    arr[i * mask.width + j] = r === 255 && g === 255 && b === 255 ? 255 : 0;
+                    arr[i * mask.width + j] =
+                        r === 255 && g === 255 && b === 255 ? 255 : 0;
                 }
             }
             return { data: arr, width: mask.width, height: mask.height };
         }
-        if (Array.isArray(mask) || mask instanceof Uint8Array || mask instanceof Uint8ClampedArray) {
+        if (Array.isArray(mask) ||
+            mask instanceof Uint8Array ||
+            mask instanceof Uint8ClampedArray) {
             const length = mask.length;
             if (length !== this.width * this.height) {
                 throw new Error(`Mask length ${length} does not match expected ${this.width * this.height}`);
@@ -244,20 +257,20 @@ class WordCloud {
             }
             return { data: arr, width: this.width, height: this.height };
         }
-        throw new Error('Unsupported mask format');
+        throw new Error("Unsupported mask format");
     }
     processText(text) {
         const basePattern = this.minWordLength <= 1 ? /\w[\w']*/g : /\w[\w']+/g;
         let regex = basePattern;
         if (this.regexp) {
             if (this.regexp instanceof RegExp) {
-                const flags = this.regexp.flags.includes('g')
+                const flags = this.regexp.flags.includes("g")
                     ? this.regexp.flags
                     : `${this.regexp.flags}g`;
                 regex = new RegExp(this.regexp.source, flags);
             }
             else {
-                regex = new RegExp(this.regexp, 'g');
+                regex = new RegExp(this.regexp, "g");
             }
         }
         const matches = text.match(regex) || [];
@@ -281,11 +294,18 @@ class WordCloud {
     }
     measure(ctx, word, fontSize) {
         ctx.font = `${fontSize}px ${this.fontFamily}`;
-        ctx.textBaseline = 'top';
+        ctx.textBaseline = "alphabetic";
         const metrics = ctx.measureText(word);
         const buffer = 2;
         const width = Math.ceil(metrics.width + buffer);
-        const height = Math.ceil((metrics.actualBoundingBoxAscent) + (metrics.actualBoundingBoxDescent) + buffer);
+        // const height = Math.ceil(
+        //   metrics.actualBoundingBoxAscent +
+        //     metrics.actualBoundingBoxDescent +
+        //     buffer
+        // );
+        const hasDescender = /[gjpqy]/.test(word);
+        const descent = hasDescender ? metrics.actualBoundingBoxDescent : 2; // 2px an toàn cho dấu nặng
+        const height = Math.floor(metrics.actualBoundingBoxAscent + descent);
         return {
             width,
             height,
@@ -304,7 +324,7 @@ class WordCloud {
             .filter(([, v]) => v > 0)
             .sort((a, b) => b[1] - a[1]);
         if (!freqEntries.length) {
-            throw new Error('Need at least 1 word to plot');
+            throw new Error("Need at least 1 word to plot");
         }
         freqEntries = freqEntries.slice(0, this.maxWords);
         const maxFrequency = freqEntries[0][1];
@@ -316,7 +336,7 @@ class WordCloud {
         // Pixel-level occupancy + integral image
         const occupancy = new IntegralOccupancyMap(height, width, mask ? mask.data : null);
         const measureCanvas = (0, canvas_1.createCanvas)(width, height);
-        const measureCtx = measureCanvas.getContext('2d');
+        const measureCtx = measureCanvas.getContext("2d");
         const layoutItems = [];
         const rs = this.relativeScaling;
         let lastFreq = 1;
@@ -362,12 +382,12 @@ class WordCloud {
             if (rs !== 0) {
                 fontSize = Math.round((rs * (freq / lastFreq) + (1 - rs)) * fontSize);
             }
-            let orientation = 'horizontal';
+            let orientation = "horizontal";
             if (this.random.next() < this.preferHorizontal) {
-                orientation = 'horizontal';
+                orientation = "horizontal";
             }
             else {
-                orientation = 'vertical';
+                orientation = "vertical";
             }
             let triedOther = false;
             let result = null;
@@ -378,7 +398,7 @@ class WordCloud {
                 if (fontSize < this.minFontSize)
                     break;
                 const measured = this.measure(measureCtx, word, fontSize);
-                if (orientation === 'horizontal') {
+                if (orientation === "horizontal") {
                     searchW = measured.width + this.margin;
                     searchH = measured.height + this.margin;
                 }
@@ -396,12 +416,12 @@ class WordCloud {
                 }
                 if (!triedOther && this.preferHorizontal < 1) {
                     orientation =
-                        orientation === 'horizontal' ? 'vertical' : 'horizontal';
+                        orientation === "horizontal" ? "vertical" : "horizontal";
                     triedOther = true;
                 }
                 else {
                     fontSize -= this.fontStep;
-                    orientation = 'horizontal';
+                    orientation = "horizontal";
                     triedOther = false;
                 }
             }
@@ -417,23 +437,25 @@ class WordCloud {
                 tmpH = box.height;
             }
             else {
-                tmpW = box.height; // swapped when rotated
+                tmpW = box.height;
                 tmpH = box.width;
             }
             const tmpCanvas = (0, canvas_1.createCanvas)(tmpW, tmpH);
             const tmpCtx = tmpCanvas.getContext('2d');
             tmpCtx.font = `${fontSize}px ${this.fontFamily}`;
-            tmpCtx.textBaseline = 'top';
+            // THAY ĐỔI 3: Thiết lập baseline chuẩn
+            tmpCtx.textBaseline = 'alphabetic';
             tmpCtx.fillStyle = '#000';
             if (orientation === 'horizontal') {
-                tmpCtx.fillText(word, 0, 0);
+                // Vẽ tại y = box.ascent (đẩy chữ xuống để đỉnh chữ chạm mép trên canvas)
+                tmpCtx.fillText(word, 0, box.ascent);
             }
             else {
-                // rotate -90° and translate so the word stays inside the temp canvas
                 tmpCtx.save();
                 tmpCtx.translate(0, box.width);
                 tmpCtx.rotate(-Math.PI / 2);
-                tmpCtx.fillText(word, 0, 0);
+                // Tương tự, vẽ tại ascent sau khi xoay
+                tmpCtx.fillText(word, 0, box.ascent);
                 tmpCtx.restore();
             }
             const imgData = tmpCtx.getImageData(0, 0, tmpW, tmpH);
@@ -446,6 +468,7 @@ class WordCloud {
                 y: drawY,
                 w: box.width,
                 h: box.height,
+                ascent: box.ascent, // <--- THAY ĐỔI 4: Lưu ascent vào layout
                 orientation,
                 color: this.colorFunc(word, fontSize, { x: drawX, y: drawY }, orientation, this.random, { fontFamily: this.fontFamily }),
             });
@@ -477,15 +500,16 @@ class WordCloud {
     toCanvas(canvas) {
         var _a, _b;
         if (!this.layout) {
-            throw new Error('Call generate() first');
+            throw new Error("Call generate() first");
         }
         const width = (((_a = this.dimensions) === null || _a === void 0 ? void 0 : _a.width) || this.width) * this.scale;
         const height = (((_b = this.dimensions) === null || _b === void 0 ? void 0 : _b.height) || this.height) * this.scale;
         const target = canvas || (0, canvas_1.createCanvas)(width, height);
-        const ctx = target.getContext('2d');
+        const ctx = target.getContext("2d");
         ctx.scale(this.scale, this.scale);
-        ctx.textBaseline = 'top';
-        ctx.textAlign = 'left';
+        // THAY ĐỔI 5: Dùng alphabetic cho render cuối cùng
+        ctx.textBaseline = "alphabetic";
+        ctx.textAlign = "left";
         if (this.backgroundColor !== null) {
             ctx.fillStyle = this.backgroundColor;
             ctx.fillRect(0, 0, width, height);
@@ -494,22 +518,19 @@ class WordCloud {
             ctx.save();
             ctx.fillStyle = item.color;
             ctx.font = `${item.fontSize}px ${this.fontFamily}`;
-            if (item.orientation === 'horizontal') {
-                ctx.fillText(item.word, item.x, item.y);
+            if (item.orientation === "horizontal") {
+                // THAY ĐỔI 6: Cộng thêm item.ascent vào toạ độ Y
+                ctx.fillText(item.word, item.x, item.y + item.ascent);
             }
             else {
                 ctx.translate(item.x, item.y + item.w);
                 ctx.rotate(-Math.PI / 2);
-                ctx.fillText(item.word, 0, 0);
+                // THAY ĐỔI 7: Vẽ tại vị trí ascent trục đã xoay
+                ctx.fillText(item.word, 0, item.ascent);
             }
             ctx.restore();
         }
         return target;
-    }
-    toBuffer(format = 'image/png') {
-        const canvas = this.toCanvas();
-        // Canvas typings are overloaded; cast keeps the API surface aligned with @napi-rs/canvas.
-        return canvas.toBuffer(format);
     }
 }
 exports.WordCloud = WordCloud;

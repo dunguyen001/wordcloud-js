@@ -3,7 +3,7 @@ const path = require('path');
 const { loadImage, createCanvas } = require('@napi-rs/canvas');
 const { WordCloud } = require('..');
 
-const sampleText = `One Two Three`;
+const sampleText = `one two three`;
 
 async function createFromMask(filePath, maxDimension = null) {
   const resolved = path.isAbsolute(filePath) ? filePath : path.join(__dirname, filePath);
@@ -55,11 +55,12 @@ async function main() {
   const baseOptions = {
     // null => transparent background, only the colored words are drawn.
     backgroundColor: null,
+    caseSensitive: true,
     randomSeed: 13,
     preferHorizontal: 0.85,
     repeat: true,
     // maxWords: 1000,
-    margin: 4,
+    margin: 1,
     fillGaps: true,
     // Define your own palette inline; this keeps the package lean.
     colorFunc: (() => {
